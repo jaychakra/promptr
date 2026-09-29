@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <title>Teleprompter</title>
+<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
 <style>
   :root {
     --bg: #0b0b0d;
@@ -612,8 +613,45 @@
     border-radius: 18px;
     margin-bottom: 18px;
   }
-  .result-actions { display: flex; gap: 10px; }
-  .result-actions button { flex: 1; }
+  .result-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .result-actions button { flex: 1; min-width: 140px; }
+  .save-webm-btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: #e5e5ea;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 14px;
+    font-weight: 600;
+    min-height: 54px;
+    padding: 14px 20px;
+    transition: background 0.15s;
+  }
+  .save-webm-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+  .conversion-status {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px 18px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    margin-top: 14px;
+    font-size: 14px;
+    color: #e5e5ea;
+  }
+  .conversion-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
 
   .save-alert {
     display: none;
@@ -812,7 +850,12 @@
     <video id="recordedVideo" controls playsinline></video>
     <div class="result-actions">
       <button id="newBtn" class="primary">New Recording</button>
-      <button id="saveBtn" class="primary">Save Video</button>
+      <button id="saveBtn" class="primary">Save as MP4</button>
+      <button id="saveWebmBtn" class="save-webm-btn" style="display: none;">Save as WebM</button>
+    </div>
+    <div id="conversionStatus" class="conversion-status">
+      <div class="conversion-spinner"></div>
+      <span id="conversionText">Converting video to MP4 on your device…</span>
     </div>
     <div id="saveAlert" class="save-alert">✓ Download complete! Your video has been saved.</div>
   </div>
@@ -838,8 +881,11 @@
   const error = document.getElementById('error');
   const recordedVideo = document.getElementById('recordedVideo');
   const saveBtn = document.getElementById('saveBtn');
+  const saveWebmBtn = document.getElementById('saveWebmBtn');
   const newBtn = document.getElementById('newBtn');
   const saveAlert = document.getElementById('saveAlert');
+  const conversionStatus = document.getElementById('conversionStatus');
+  const conversionText = document.getElementById('conversionText');
 
   // Projects & Sidebar Elements
   const sidebar = document.getElementById('sidebar');
@@ -1209,10 +1255,13 @@ Keep writing your script exactly as you want to read it.`;
 
   function chooseMimeType() {
     const candidates = [
+      'video/mp4;codecs=avc1,mp4a.40.2',
+      'video/mp4;codecs=avc1',
+      'video/mp4;codecs=h264,aac',
+      'video/mp4',
       'video/webm;codecs=vp9,opus',
       'video/webm;codecs=vp8,opus',
-      'video/webm',
-      'video/mp4'
+      'video/webm'
     ];
     return candidates.find(type => MediaRecorder.isTypeSupported(type)) || '';
   }
@@ -1322,6 +1371,68 @@ Keep writing your script exactly as you want to read it.`;
     }
   }
 
+  let ffmpegInstance = null;
+  let ffmpegLoading = null;
+
+  async function getFFmpeg() {
+    if (ffmpegInstance) return ffmpegInstance;
+    if (ffmpegLoading) return ffmpegLoading;
+
+    if (typeof FFmpeg === 'undefined') {
+      throw new Error('FFmpeg WebAssembly library is not available. Please verify your internet connection.');
+    }
+
+    const { createFFmpeg } = FFmpeg;
+    ffmpegInstance = createFFmpeg({
+      log: false,
+      corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js'
+    });
+
+    ffmpegInstance.setProgress(({ ratio }) => {
+      const pct = Math.min(99, Math.max(0, Math.round(ratio * 100)));
+      if (conversionText) {
+        conversionText.textContent = `Converting to MP4 (${pct}%)…`;
+      }
+    });
+
+    ffmpegLoading = ffmpegInstance.load().then(() => ffmpegInstance);
+    return ffmpegLoading;
+  }
+
+  function preloadFFmpeg() {
+    if (typeof FFmpeg !== 'undefined' && !ffmpegInstance && !ffmpegLoading) {
+      getFFmpeg().catch(err => {
+        console.warn('Background FFmpeg preloading:', err.message);
+      });
+    }
+  }
+
+  async function convertWebMToMp4(webmBlob) {
+    const ffmpeg = await getFFmpeg();
+    const inputData = new Uint8Array(await webmBlob.arrayBuffer());
+    ffmpeg.FS('writeFile', 'input.webm', inputData);
+
+    await ffmpeg.run(
+      '-i', 'input.webm',
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-crf', '26',
+      '-c:a', 'aac',
+      '-movflags', '+faststart',
+      'output.mp4'
+    );
+
+    const outputData = ffmpeg.FS('readFile', 'output.mp4');
+    const mp4Blob = new Blob([outputData.buffer], { type: 'video/mp4' });
+
+    try {
+      ffmpeg.FS('unlink', 'input.webm');
+      ffmpeg.FS('unlink', 'output.mp4');
+    } catch (e) {}
+
+    return mp4Blob;
+  }
+
   function finishRecording() {
     const type = mediaRecorder.mimeType || 'video/webm';
     recordingBlob = new Blob(chunks, { type });
@@ -1331,6 +1442,18 @@ Keep writing your script exactly as you want to read it.`;
     recordedVideo.src = recordingUrl;
 
     if (saveAlert) saveAlert.style.display = 'none';
+    if (conversionStatus) conversionStatus.style.display = 'none';
+
+    const isMp4 = recordingBlob.type.includes('mp4');
+    if (isMp4) {
+      saveBtn.textContent = 'Save Video (MP4)';
+      saveWebmBtn.style.display = 'none';
+    } else {
+      saveBtn.textContent = 'Convert & Save as MP4';
+      saveWebmBtn.textContent = 'Save as WebM';
+      saveWebmBtn.style.display = 'inline-block';
+      preloadFFmpeg();
+    }
 
     recordBtn.textContent = '● Record';
     recordBtn.classList.remove('recording');
@@ -1344,28 +1467,68 @@ Keep writing your script exactly as you want to read it.`;
     showScreen(result);
   }
 
-  function showDownloadAlert() {
-    if (saveAlert) {
-      saveAlert.style.display = 'block';
-    }
-    alert('Download complete! Your video has been saved.');
-  }
-
   async function saveVideo() {
     if (!recordingBlob) return;
 
-    const extension = recordingBlob.type.includes('mp4') ? 'mp4' : 'webm';
-    const filename = `teleprompter-${new Date().toISOString().replace(/[:.]/g, '-')}.${extension}`;
+    if (recordingBlob.type.includes('mp4')) {
+      downloadBlob(recordingBlob, 'mp4');
+      return;
+    }
+
+    // Convert WebM to MP4 client-side
+    saveBtn.disabled = true;
+    saveWebmBtn.disabled = true;
+    newBtn.disabled = true;
+    if (saveAlert) saveAlert.style.display = 'none';
+    if (conversionStatus) conversionStatus.style.display = 'inline-flex';
+    if (conversionText) conversionText.textContent = 'Preparing MP4 converter…';
+
+    try {
+      if (conversionText) conversionText.textContent = 'Converting video to MP4 on your device…';
+      const mp4Blob = await convertWebMToMp4(recordingBlob);
+      downloadBlob(mp4Blob, 'mp4');
+      if (saveAlert) {
+        saveAlert.textContent = '✓ Download complete! Your video was converted to MP4 and saved.';
+        saveAlert.style.display = 'block';
+      }
+    } catch (err) {
+      console.error('Client-side MP4 conversion failed:', err);
+      if (conversionStatus) conversionStatus.style.display = 'none';
+      alert('Client-side MP4 conversion could not complete. Saving as original WebM instead.');
+      downloadBlob(recordingBlob, 'webm');
+    } finally {
+      saveBtn.disabled = false;
+      saveWebmBtn.disabled = false;
+      newBtn.disabled = false;
+      if (conversionStatus) conversionStatus.style.display = 'none';
+    }
+  }
+
+  function saveWebm() {
+    if (!recordingBlob) return;
+    downloadBlob(recordingBlob, 'webm');
+    if (saveAlert) {
+      saveAlert.textContent = '✓ Download complete! Your WebM video has been saved.';
+      saveAlert.style.display = 'block';
+    }
+  }
+
+  function downloadBlob(blob, ext) {
+    const filename = `teleprompter-${new Date().toISOString().replace(/[:.]/g, '-')}.${ext}`;
 
     if (navigator.share && navigator.canShare) {
       try {
-        const file = new File([recordingBlob], filename, { type: recordingBlob.type });
+        const file = new File([blob], filename, { type: blob.type });
         if (navigator.canShare({ files: [file] })) {
-          await navigator.share({
+          navigator.share({
             files: [file],
             title: 'Teleprompter Recording'
+          }).then(() => {
+            if (saveAlert) saveAlert.style.display = 'block';
+            alert('Download complete! Your video has been saved.');
+          }).catch(e => {
+            if (e.name !== 'AbortError') fallbackDownload(blob, filename);
           });
-          showDownloadAlert();
           return;
         }
       } catch (e) {
@@ -1373,22 +1536,23 @@ Keep writing your script exactly as you want to read it.`;
       }
     }
 
-    const originalText = saveBtn.textContent;
-    saveBtn.textContent = 'Saving…';
-    saveBtn.disabled = true;
+    fallbackDownload(blob, filename);
+  }
 
+  function fallbackDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = recordingUrl;
+    link.href = url;
     link.download = filename;
     document.body.appendChild(link);
     link.click();
     link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
 
+    if (saveAlert) saveAlert.style.display = 'block';
     setTimeout(() => {
-      saveBtn.textContent = originalText;
-      saveBtn.disabled = false;
-      showDownloadAlert();
-    }, 400);
+      alert('Download complete! Your video has been saved.');
+    }, 350);
   }
 
   async function begin() {
@@ -1472,6 +1636,7 @@ Keep writing your script exactly as you want to read it.`;
   restartBtn.addEventListener('click', resetScroll);
   exitBtn.addEventListener('click', exitRecorder);
   saveBtn.addEventListener('click', saveVideo);
+  saveWebmBtn.addEventListener('click', saveWebm);
   newBtn.addEventListener('click', newRecording);
 
   // Manual scroll adjustment via wheel or touch for long texts
