@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Teleprompter</title>
+<style>
+  :root {
+    --bg: #0b0b0d;
+    --panel: rgba(20,20,24,.96);
+    --sidebar-bg: #111115;
+    --text: #f5f5f7;
+    --muted: #a1a1aa;
+    --accent: #ff3b30;
+    --green: #30d158;
+    --border: #23232c;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    width: 100%;
+    min-height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  body { min-height: 100svh; }
+
+  button, textarea, input { font: inherit; }
+  button {
+    border: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .screen {
+    min-height: 100svh;
+    display: none;
+  }
+  .screen.active { display: flex; }
+
+  /* Setup Layout */
+  #setup {
+    align-items: stretch;
+    justify-content: stretch;
+    padding: 0;
+    height: 100svh;
+    overflow: hidden;
+  }
+  .app-layout {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: 310px;
+    min-width: 310px;
+    max-width: 310px;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    z-index: 30;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .sidebar.collapsed {
+    transform: translateX(-100%);
+    margin-right: -310px;
+  }
+  .sidebar-header {
+    padding: 16px 16px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+    color: var(--text);
+  }
+  .sidebar-brand svg {
+    color: #e5e5ea;
+  }
+  .sidebar-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .new-project-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #ffffff;
+    color: #000000;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: transform 0.15s, opacity 0.15s;
+  }
+  .new-project-btn:hover {
+    opacity: 0.9;
+    transform: scale(1.02);
+  }
+  .new-project-btn:active {
+    transform: scale(0.97);
+  }
+  .sidebar-close-btn {
+    display: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 24px;
+    line-height: 1;
+    padding: 4px 6px;
+    border-radius: 6px;
+  }
+  .sidebar-close-btn:hover {
+    color: #fff;
+  }
+  .project-search-wrap {
+    padding: 12px 14px 6px;
+  }
+  .project-search-input {
+    width: 100%;
+    background: #18181f;
+    border: 1px solid #282833;
+    border-radius: 10px;
+    color: #fff;
+    font-size: 13px;
+    padding: 8px 12px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .project-search-input:focus {
+    border-color: #555566;
+  }
+  .project-search-input::placeholder {
+    color: #6a6a75;
+  }
+  .project-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .project-list::-webkit-scrollbar {
+    width: 6px;
+  }
+  .project-list::-webkit-scrollbar-thumb {
+    background: #2a2a35;
+    border-radius: 3px;
+  }
+  .project-empty-msg {
+    padding: 28px 12px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .project-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 12px;
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    user-select: none;
+  }
+  .project-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .project-item.active {
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+  .project-item-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .project-item-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #f5f5f7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+  }
+  .project-item-preview {
+    font-size: 12px;
+    color: #888894;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+  }
+  .project-item-time {
+    font-size: 11px;
+    color: #5a5a68;
+    margin-top: 2px;
+  }
+  .project-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .project-item:hover .project-item-actions,
+  .project-item.active .project-item-actions {
+    opacity: 1;
+  }
+  .project-action-btn {
+    background: transparent;
+    color: #92929e;
+    padding: 6px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s, color 0.12s;
+  }
+  .project-action-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+  }
+  .project-action-btn.delete-btn:hover {
+    background: rgba(255, 59, 48, 0.2);
+    color: #ff453a;
+  }
+  .inline-rename-input {
+    width: 100%;
+    background: #1c1c24;
+    border: 1px solid #484858;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 3px 6px;
+    outline: none;
+  }
+  .inline-rename-input:focus {
+    border-color: #888899;
+  }
+  .sidebar-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #636370;
+  }
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 25;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  .sidebar-backdrop.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Main Content */
+  .main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow-y: auto;
+    min-width: 0;
+    background: var(--bg);
+  }
+  .top-nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 24px;
+    background: rgba(11, 11, 13, 0.88);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: rgba(255, 255, 255, 0.07);
+    color: #f5f5f7;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 7px 13px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .sidebar-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+  .active-project-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    max-width: 480px;
+    justify-content: flex-end;
+  }
+  .project-title-field {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    max-width: 320px;
+  }
+  .project-title-input {
+    width: 100%;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: #f5f5f7;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 6px 26px 6px 8px;
+    outline: none;
+    transition: background 0.15s, border-color 0.15s;
+    text-overflow: ellipsis;
+  }
+  .project-title-input:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+  .project-title-input:focus {
+    background: #181820;
+    border-color: #555566;
+  }
+  .title-edit-icon {
+    position: absolute;
+    right: 8px;
+    color: #636370;
+    pointer-events: none;
+    transition: color 0.15s;
+  }
+  .project-title-field:hover .title-edit-icon {
+    color: #a1a1aa;
+  }
+  .save-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+    user-select: none;
+  }
+  .save-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  .save-status.saving .save-dot {
+    background: #ff9f0a;
+    box-shadow: 0 0 8px #ff9f0a;
+  }
+
+  .setup-scroll-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    overflow-y: auto;
+  }
+  .setup-card {
+    width: min(760px, 100%);
+    background: var(--panel);
+    border: 1px solid #2a2a30;
+    border-radius: 24px;
+    padding: clamp(22px, 5vw, 40px);
+    box-shadow: 0 20px 60px rgba(0,0,0,.4);
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: clamp(30px, 7vw, 48px);
+    letter-spacing: -1.5px;
+  }
+  .subtitle {
+    margin: 0 0 24px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  textarea {
+    width: 100%;
+    min-height: 300px;
+    resize: vertical;
+    padding: 18px;
+    border-radius: 16px;
+    border: 1px solid #34343b;
+    background: #141418;
+    color: var(--text);
+    outline: none;
+    line-height: 1.65;
+    font-size: 18px;
+  }
+  textarea:focus { border-color: #66666f; }
+  .setup-actions { margin-top: 16px; display: flex; gap: 12px; }
+  .primary {
+    flex: 1;
+    min-height: 54px;
+    padding: 14px 20px;
+    border-radius: 14px;
+    background: #fff;
+    color: #000;
+    font-weight: 700;
+  }
+  .primary:disabled { opacity: .45; cursor: not-allowed; }
+  .note {
+    margin-top: 14px;
+    color: #777780;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* Recorder */
+  #recorder {
+    position: relative;
+    overflow: hidden;
+    background: #000;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  #camera {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #000;
+    transform: scaleX(-1);
+  }
+  .video-shade {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(to bottom, rgba(0,0,0,.42), transparent 22%, transparent 70%, rgba(0,0,0,.65));
+    pointer-events: none;
+  }
+
+  .teleprompter-window {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .script {
+    position: absolute;
+    left: 6%;
+    right: 6%;
+    top: 100%;
+    text-align: center;
+    font-size: clamp(25px, 5vw, 52px);
+    line-height: 1.45;
+    font-weight: 600;
+    text-shadow: 0 3px 12px rgba(0,0,0,.9);
+    white-space: pre-wrap;
+    will-change: transform;
+  }
+  .reading-line {
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    top: 48%;
+    height: 2px;
+    background: rgba(255,255,255,.35);
+    box-shadow: 0 0 12px rgba(0,0,0,.5);
+  }
+
+  .controls {
+    position: absolute;
+    z-index: 5;
+    left: 0;
+    right: 0;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+  }
+  .control {
+    min-height: 46px;
+    padding: 10px 16px;
+    border-radius: 999px;
+    background: rgba(20,20,24,.82);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,.18);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    font-weight: 600;
+  }
+  .record {
+    background: var(--accent);
+    border-color: transparent;
+  }
+  .record.recording {
+    background: #fff;
+    color: #000;
+  }
+  .speed-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: rgba(20,20,24,.82);
+    border: 1px solid rgba(255,255,255,.18);
+    backdrop-filter: blur(12px);
+  }
+  .speed-wrap span { font-size: 13px; color: #ddd; }
+  input[type="range"] { width: 110px; accent-color: white; }
+
+  .status {
+    position: absolute;
+    z-index: 6;
+    top: max(16px, env(safe-area-inset-top));
+    left: 16px;
+    right: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    pointer-events: none;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(0,0,0,.58);
+    backdrop-filter: blur(10px);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #aaa;
+  }
+  .recording .dot {
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+  }
+  .close-btn {
+    pointer-events: auto;
+    background: rgba(0,0,0,.58);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,.15);
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    font-size: 20px;
+  }
+
+  /* Result */
+  #result {
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .result-card {
+    width: min(700px, 100%);
+    text-align: center;
+  }
+  .result-card h2 { font-size: clamp(28px, 7vw, 42px); margin: 0 0 10px; }
+  .result-card p { color: var(--muted); margin-bottom: 24px; }
+  #recordedVideo {
+    display: block;
+    width: 100%;
+    max-height: 65svh;
+    background: #000;
+    border-radius: 18px;
+    margin-bottom: 18px;
+  }
+  .result-actions { display: flex; gap: 10px; }
+  .result-actions button { flex: 1; }
+
+  .save-alert {
+    display: none;
+    background: rgba(48, 209, 88, 0.16);
+    border: 1px solid rgba(48, 209, 88, 0.4);
+    color: #30d158;
+    padding: 12px 18px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    margin-top: 14px;
+  }
+
+  .error {
+    color: #ff6961;
+    margin-top: 12px;
+    font-size: 14px;
+    display: none;
+  }
+
+  /* Responsive Rules */
+  @media (max-width: 860px) {
+    .sidebar {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      transform: translateX(-100%);
+      box-shadow: 10px 0 35px rgba(0, 0, 0, 0.7);
+    }
+    .sidebar.open {
+      transform: translateX(0);
+    }
+    .sidebar-close-btn {
+      display: inline-flex;
+    }
+    .project-item .project-item-actions {
+      opacity: 1;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .top-nav {
+      padding: 10px 14px;
+    }
+    .toggle-text {
+      display: none;
+    }
+    .setup-scroll-area {
+      padding: 14px;
+      align-items: flex-start;
+      padding-top: 16px;
+    }
+    .setup-card {
+      border-radius: 20px;
+      padding: 20px;
+    }
+    textarea {
+      min-height: 44svh;
+      font-size: 17px;
+    }
+    .controls {
+      flex-wrap: wrap;
+      padding-left: 10px;
+      padding-right: 10px;
+    }
+    .speed-wrap {
+      order: 3;
+      width: min(100%, 340px);
+      justify-content: center;
+    }
+    input[type="range"] {
+      flex: 1;
+    }
+    .control {
+      min-height: 44px;
+    }
+    .script {
+      left: 5%;
+      right: 5%;
+      font-size: clamp(24px, 7vw, 34px);
+    }
+  }
+</style>
+</head>
+<body>
+
+<section id="setup" class="screen active">
+  <div class="app-layout">
+    <!-- Mobile Sidebar Backdrop -->
+    <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+
+    <!-- Projects Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-brand">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <span>Projects</span>
+        </div>
+        <div class="sidebar-header-actions">
+          <button id="newProjectBtn" class="new-project-btn" title="Create New Project">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>New</span>
+          </button>
+          <button id="sidebarCloseBtn" class="sidebar-close-btn" title="Close Sidebar" aria-label="Close Sidebar">×</button>
+        </div>
+      </div>
+
+      <div class="project-search-wrap">
+        <input type="text" id="projectSearch" class="project-search-input" placeholder="Search projects..." />
+      </div>
+
+      <div id="projectList" class="project-list" role="list"></div>
+
+      <div class="sidebar-footer">
+        <span id="projectCount">0 projects</span>
+        <span>LocalStorage</span>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <div class="top-nav">
+        <button id="sidebarToggleBtn" class="sidebar-toggle-btn" title="Toggle Projects Sidebar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          <span class="toggle-text">Projects</span>
+        </button>
+
+        <div class="active-project-bar">
+          <div class="project-title-field">
+            <input type="text" id="projectTitleInput" class="project-title-input" placeholder="Project Name" title="Click to rename project" />
+            <svg class="title-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </div>
+          <div id="saveStatus" class="save-status" title="LocalStorage Status">
+            <span class="save-dot"></span>
+            <span id="saveStatusText">Saved</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="setup-scroll-area">
+        <div class="setup-card">
+          <h1>Teleprompter</h1>
+          <p class="subtitle">Edit your script below. Changes save automatically to LocalStorage. Your camera and microphone will start only when recording.</p>
+
+          <textarea id="scriptInput" placeholder="Paste or type your script here..."></textarea>
+
+          <div class="setup-actions">
+            <button id="startBtn" class="primary">Start Teleprompter</button>
+          </div>
+
+          <div id="error" class="error"></div>
+          <div class="note">
+            Everything runs locally in your browser. All projects and scripts are stored in LocalStorage.
+            On iPhone/iPad, use Safari and allow camera and microphone access.
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</section>
+
+<section id="recorder" class="screen">
+  <video id="camera" autoplay playsinline muted></video>
+  <div class="video-shade"></div>
+
+  <div class="status">
+    <div id="statusBadge" class="badge">
+      <span class="dot"></span>
+      <span id="statusText">Ready</span>
+    </div>
+    <button id="exitBtn" class="close-btn" title="Exit">×</button>
+  </div>
+
+  <div class="teleprompter-window">
+    <div id="scriptDisplay" class="script"></div>
+    <div class="reading-line"></div>
+  </div>
+
+  <div class="controls">
+    <button id="scrollBtn" class="control">▶ Start Scroll</button>
+    <button id="recordBtn" class="control record">● Record</button>
+    <div class="speed-wrap">
+      <span>Speed</span>
+      <input id="speed" type="range" min="5" max="120" value="30" step="1">
+      <span id="speedValue">30</span>
+    </div>
+    <button id="restartBtn" class="control">↺ Restart</button>
+  </div>
+</section>
+
+<section id="result" class="screen">
+  <div class="result-card">
+    <h2>Recording Ready</h2>
+    <p>Your video is available locally. Preview it and save it to your device.</p>
+    <video id="recordedVideo" controls playsinline></video>
+    <div class="result-actions">
+      <button id="newBtn" class="primary">New Recording</button>
+      <button id="saveBtn" class="primary">Save Video</button>
+    </div>
+    <div id="saveAlert" class="save-alert">✓ Download complete! Your video has been saved.</div>
+  </div>
+</section>
+
+<script>
+(() => {
+  const setup = document.getElementById('setup');
+  const recorder = document.getElementById('recorder');
+  const result = document.getElementById('result');
+  const scriptInput = document.getElementById('scriptInput');
+  const scriptDisplay = document.getElementById('scriptDisplay');
+  const camera = document.getElementById('camera');
+  const startBtn = document.getElementById('startBtn');
+  const recordBtn = document.getElementById('recordBtn');
+  const scrollBtn = document.getElementById('scrollBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const exitBtn = document.getElementById('exitBtn');
+  const speed = document.getElementById('speed');
+  const speedValue = document.getElementById('speedValue');
+  const statusBadge = document.getElementById('statusBadge');
+  const statusText = document.getElementById('statusText');
+  const error = document.getElementById('error');
+  const recordedVideo = document.getElementById('recordedVideo');
+  const saveBtn = document.getElementById('saveBtn');
+  const newBtn = document.getElementById('newBtn');
+  const saveAlert = document.getElementById('saveAlert');
+
+  // Projects & Sidebar Elements
+  const sidebar = document.getElementById('sidebar');
+  const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+  const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+  const sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
+  const newProjectBtn = document.getElementById('newProjectBtn');
+  const projectList = document.getElementById('projectList');
+  const projectSearch = document.getElementById('projectSearch');
+  const projectCount = document.getElementById('projectCount');
+  const projectTitleInput = document.getElementById('projectTitleInput');
+  const saveStatus = document.getElementById('saveStatus');
+  const saveStatusText = document.getElementById('saveStatusText');
+
+  // Storage Keys & State
+  const STORAGE_KEY = 'teleprompter_projects_v1';
+  const ACTIVE_KEY = 'teleprompter_active_id_v1';
+
+  let projects = [];
+  let activeProjectId = null;
+  let saveTimeout = null;
+  let searchFilter = '';
+
+  const DEFAULT_SCRIPT = `Hello everyone.
+
+Today I want to talk about...
+
+Keep writing your script exactly as you want to read it.`;
+
+  function loadProjects() {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        projects = JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error('Error loading projects from localStorage', e);
+      projects = [];
+    }
+
+    if (!Array.isArray(projects) || projects.length === 0) {
+      const defaultProj = {
+        id: 'proj_' + Date.now(),
+        name: 'Welcome Script',
+        script: DEFAULT_SCRIPT,
+        updatedAt: Date.now()
+      };
+      projects = [defaultProj];
+      activeProjectId = defaultProj.id;
+      persistProjects();
+    } else {
+      try {
+        activeProjectId = localStorage.getItem(ACTIVE_KEY);
+      } catch (e) {}
+
+      if (!activeProjectId || !projects.some(p => p.id === activeProjectId)) {
+        activeProjectId = projects[0].id;
+      }
+    }
+  }
+
+  function persistProjects() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+      if (activeProjectId) {
+        localStorage.setItem(ACTIVE_KEY, activeProjectId);
+      }
+      showSavedStatus();
+    } catch (e) {
+      console.error('Error persisting projects to localStorage', e);
+    }
+  }
+
+  function getActiveProject() {
+    return projects.find(p => p.id === activeProjectId) || null;
+  }
+
+  function showSavedStatus() {
+    if (saveStatus && saveStatusText) {
+      saveStatus.classList.remove('saving');
+      saveStatusText.textContent = 'Saved in LocalStorage';
+    }
+  }
+
+  function triggerAutoSave() {
+    if (saveStatus && saveStatusText) {
+      saveStatus.classList.add('saving');
+      saveStatusText.textContent = 'Saving…';
+    }
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+      const current = getActiveProject();
+      if (current) {
+        current.script = scriptInput.value;
+        current.updatedAt = Date.now();
+        persistProjects();
+        renderProjects();
+      }
+    }, 250);
+  }
+
+  function syncActiveProjectToUI() {
+    const current = getActiveProject();
+    if (!current) return;
+    projectTitleInput.value = current.name || 'Untitled Project';
+    scriptInput.value = current.script || '';
+    clearError();
+  }
+
+  function switchProject(id) {
+    if (id === activeProjectId) {
+      closeSidebar();
+      return;
+    }
+    clearTimeout(saveTimeout);
+    const current = getActiveProject();
+    if (current) {
+      current.script = scriptInput.value;
+      persistProjects();
+    }
+
+    activeProjectId = id;
+    try {
+      localStorage.setItem(ACTIVE_KEY, activeProjectId);
+    } catch (e) {}
+
+    syncActiveProjectToUI();
+    renderProjects();
+    closeSidebar();
+  }
+
+  function createProject() {
+    clearTimeout(saveTimeout);
+    const current = getActiveProject();
+    if (current) {
+      current.script = scriptInput.value;
+    }
+
+    const newId = 'proj_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    const newProj = {
+      id: newId,
+      name: `Project ${projects.length + 1}`,
+      script: '',
+      updatedAt: Date.now()
+    };
+
+    projects.unshift(newProj);
+    activeProjectId = newId;
+    persistProjects();
+
+    syncActiveProjectToUI();
+    renderProjects();
+    closeSidebar();
+    scriptInput.focus();
+  }
+
+  function deleteProject(id, e) {
+    if (e) e.stopPropagation();
+    const target = projects.find(p => p.id === id);
+    if (!target) return;
+
+    const confirmed = confirm(`Are you sure you want to delete "${target.name}"?`);
+    if (!confirmed) return;
+
+    projects = projects.filter(p => p.id !== id);
+
+    if (projects.length === 0) {
+      const fresh = {
+        id: 'proj_' + Date.now(),
+        name: 'Untitled Project',
+        script: '',
+        updatedAt: Date.now()
+      };
+      projects = [fresh];
+      activeProjectId = fresh.id;
+    } else if (activeProjectId === id) {
+      activeProjectId = projects[0].id;
+    }
+
+    persistProjects();
+    syncActiveProjectToUI();
+    renderProjects();
+  }
+
+  function startSidebarRename(id, titleSpan, e) {
+    if (e) e.stopPropagation();
+    const target = projects.find(p => p.id === id);
+    if (!target) return;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'inline-rename-input';
+    input.value = target.name;
+
+    titleSpan.replaceWith(input);
+    input.focus();
+    input.select();
+
+    let committed = false;
+    function commit() {
+      if (committed) return;
+      committed = true;
+      const val = input.value.trim() || 'Untitled Project';
+      target.name = val;
+      target.updatedAt = Date.now();
+      persistProjects();
+      if (target.id === activeProjectId) {
+        projectTitleInput.value = val;
+      }
+      renderProjects();
+    }
+
+    input.addEventListener('keydown', evt => {
+      if (evt.key === 'Enter') {
+        evt.preventDefault();
+        commit();
+      } else if (evt.key === 'Escape') {
+        committed = true;
+        renderProjects();
+      }
+    });
+
+    input.addEventListener('blur', commit);
+    input.addEventListener('click', evt => evt.stopPropagation());
+  }
+
+  function formatTime(timestamp) {
+    if (!timestamp) return '';
+    const sec = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+    if (sec < 60) return 'Just now';
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    const hrs = Math.floor(min / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  }
+
+  function getPreview(script) {
+    if (!script || !script.trim()) return 'Empty script';
+    const firstLine = script.trim().split('\n').find(l => l.trim().length > 0) || 'Empty script';
+    return firstLine.length > 36 ? firstLine.substring(0, 36) + '…' : firstLine;
+  }
+
+  function renderProjects() {
+    projectList.innerHTML = '';
+
+    const filtered = projects.filter(p => {
+      if (!searchFilter) return true;
+      return (p.name && p.name.toLowerCase().includes(searchFilter)) ||
+             (p.script && p.script.toLowerCase().includes(searchFilter));
+    });
+
+    if (filtered.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'project-empty-msg';
+      empty.textContent = searchFilter ? 'No matching projects' : 'No projects';
+      projectList.appendChild(empty);
+    } else {
+      filtered.forEach(p => {
+        const item = document.createElement('div');
+        item.className = 'project-item' + (p.id === activeProjectId ? ' active' : '');
+        item.dataset.id = p.id;
+
+        const info = document.createElement('div');
+        info.className = 'project-item-info';
+
+        const title = document.createElement('span');
+        title.className = 'project-item-title';
+        title.textContent = p.name || 'Untitled Project';
+        title.title = p.name || 'Untitled Project';
+
+        const preview = document.createElement('div');
+        preview.className = 'project-item-preview';
+        preview.textContent = getPreview(p.script);
+
+        const time = document.createElement('div');
+        time.className = 'project-item-time';
+        time.textContent = formatTime(p.updatedAt);
+
+        info.appendChild(title);
+        info.appendChild(preview);
+        info.appendChild(time);
+
+        const actions = document.createElement('div');
+        actions.className = 'project-item-actions';
+
+        const renameBtn = document.createElement('button');
+        renameBtn.className = 'project-action-btn rename-btn';
+        renameBtn.title = 'Rename project';
+        renameBtn.setAttribute('aria-label', 'Rename project');
+        renameBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
+        renameBtn.addEventListener('click', (e) => startSidebarRename(p.id, title, e));
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'project-action-btn delete-btn';
+        deleteBtn.title = 'Delete project';
+        deleteBtn.setAttribute('aria-label', 'Delete project');
+        deleteBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
+        deleteBtn.addEventListener('click', (e) => deleteProject(p.id, e));
+
+        actions.appendChild(renameBtn);
+        actions.appendChild(deleteBtn);
+
+        item.appendChild(info);
+        item.appendChild(actions);
+
+        item.addEventListener('click', () => switchProject(p.id));
+
+        projectList.appendChild(item);
+      });
+    }
+
+    const countText = projects.length === 1 ? '1 project' : `${projects.length} projects`;
+    projectCount.textContent = countText;
+  }
+
+  function toggleSidebar() {
+    if (window.innerWidth <= 860) {
+      const isOpen = sidebar.classList.contains('open');
+      if (isOpen) {
+        closeSidebar();
+      } else {
+        sidebar.classList.add('open');
+        sidebarBackdrop.classList.add('active');
+      }
+    } else {
+      sidebar.classList.toggle('collapsed');
+    }
+  }
+
+  function closeSidebar() {
+    sidebar.classList.remove('open');
+    sidebarBackdrop.classList.remove('active');
+  }
+
+  // Camera & Prompter state
+  let stream = null;
+  let mediaRecorder = null;
+  let chunks = [];
+  let recordingBlob = null;
+  let recordingUrl = null;
+  let scrollY = 0;
+  let scrolling = false;
+  let lastFrame = null;
+  let animationId = null;
+
+  function showScreen(screen) {
+    [setup, recorder, result].forEach(s => s.classList.remove('active'));
+    screen.classList.add('active');
+  }
+
+  function showError(message) {
+    error.textContent = message;
+    error.style.display = 'block';
+  }
+
+  function clearError() {
+    error.textContent = '';
+    error.style.display = 'none';
+  }
+
+  function setStatus(text, isRecording = false) {
+    statusText.textContent = text;
+    statusBadge.classList.toggle('recording', isRecording);
+  }
+
+  function chooseMimeType() {
+    const candidates = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      'video/mp4'
+    ];
+    return candidates.find(type => MediaRecorder.isTypeSupported(type)) || '';
+  }
+
+  async function startCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error('Camera access is not supported by this browser. Please use a recent Chrome, Safari, Edge, or Firefox browser.');
+    }
+
+    const constraints = {
+      audio: true,
+      video: {
+        facingMode: { ideal: 'user' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      }
+    };
+
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    camera.srcObject = stream;
+    await camera.play();
+  }
+
+  function prepareScript() {
+    scriptDisplay.textContent = scriptInput.value.trim();
+    scrollY = 0;
+    scriptDisplay.style.transform = `translateY(0px)`;
+    scrolling = false;
+    scrollBtn.textContent = '▶ Start Scroll';
+  }
+
+  function animate(timestamp) {
+    if (lastFrame === null) lastFrame = timestamp;
+    const delta = Math.min(50, timestamp - lastFrame);
+    lastFrame = timestamp;
+
+    if (scrolling) {
+      scrollY -= Number(speed.value) * delta / 1000;
+      scriptDisplay.style.transform = `translateY(${scrollY}px)`;
+
+      const scriptRect = scriptDisplay.getBoundingClientRect();
+      if (scriptRect.bottom < -80) {
+        scrolling = false;
+        scrollBtn.textContent = '▶ Start Scroll';
+        setStatus(mediaRecorder?.state === 'recording' ? 'Recording' : 'Ready', mediaRecorder?.state === 'recording');
+      }
+    }
+
+    animationId = requestAnimationFrame(animate);
+  }
+
+  function toggleScroll() {
+    const scriptRect = scriptDisplay.getBoundingClientRect();
+    if (!scrolling && scriptRect.bottom < 0) {
+      resetScroll();
+    }
+    scrolling = !scrolling;
+    lastFrame = null;
+    scrollBtn.textContent = scrolling ? 'Ⅱ Pause Scroll' : '▶ Start Scroll';
+
+    if (mediaRecorder?.state === 'recording') {
+      setStatus('Recording', true);
+    } else {
+      setStatus(scrolling ? 'Scrolling' : 'Ready', false);
+    }
+  }
+
+  function resetScroll() {
+    scrollY = 0;
+    lastFrame = null;
+    scriptDisplay.style.transform = 'translateY(0px)';
+    scrolling = false;
+    scrollBtn.textContent = '▶ Start Scroll';
+    setStatus(mediaRecorder?.state === 'recording' ? 'Recording' : 'Ready', mediaRecorder?.state === 'recording');
+  }
+
+  async function startRecording() {
+    if (!stream) return;
+
+    const mimeType = chooseMimeType();
+    chunks = [];
+
+    try {
+      mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+    } catch (e) {
+      showError('Your browser could not create a video recorder.');
+      return;
+    }
+
+    mediaRecorder.ondataavailable = event => {
+      if (event.data && event.data.size > 0) chunks.push(event.data);
+    };
+
+    mediaRecorder.onstop = finishRecording;
+    mediaRecorder.start(1000);
+
+    recordBtn.textContent = '■ End Recording';
+    recordBtn.classList.add('recording');
+    setStatus('Recording', true);
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+  }
+
+  function finishRecording() {
+    const type = mediaRecorder.mimeType || 'video/webm';
+    recordingBlob = new Blob(chunks, { type });
+
+    if (recordingUrl) URL.revokeObjectURL(recordingUrl);
+    recordingUrl = URL.createObjectURL(recordingBlob);
+    recordedVideo.src = recordingUrl;
+
+    if (saveAlert) saveAlert.style.display = 'none';
+
+    recordBtn.textContent = '● Record';
+    recordBtn.classList.remove('recording');
+    setStatus('Ready', false);
+
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+
+    showScreen(result);
+  }
+
+  function showDownloadAlert() {
+    if (saveAlert) {
+      saveAlert.style.display = 'block';
+    }
+    alert('Download complete! Your video has been saved.');
+  }
+
+  async function saveVideo() {
+    if (!recordingBlob) return;
+
+    const extension = recordingBlob.type.includes('mp4') ? 'mp4' : 'webm';
+    const filename = `teleprompter-${new Date().toISOString().replace(/[:.]/g, '-')}.${extension}`;
+
+    if (navigator.share && navigator.canShare) {
+      try {
+        const file = new File([recordingBlob], filename, { type: recordingBlob.type });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: 'Teleprompter Recording'
+          });
+          showDownloadAlert();
+          return;
+        }
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+      }
+    }
+
+    const originalText = saveBtn.textContent;
+    saveBtn.textContent = 'Saving…';
+    saveBtn.disabled = true;
+
+    const link = document.createElement('a');
+    link.href = recordingUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(() => {
+      saveBtn.textContent = originalText;
+      saveBtn.disabled = false;
+      showDownloadAlert();
+    }, 400);
+  }
+
+  async function begin() {
+    clearError();
+
+    if (!scriptInput.value.trim()) {
+      showError('Please enter a script first.');
+      scriptInput.focus();
+      return;
+    }
+
+    // Ensure current script is saved to project before starting recorder
+    clearTimeout(saveTimeout);
+    const current = getActiveProject();
+    if (current) {
+      current.script = scriptInput.value;
+      current.updatedAt = Date.now();
+      persistProjects();
+    }
+
+    startBtn.disabled = true;
+    startBtn.textContent = 'Requesting Camera…';
+
+    try {
+      await startCamera();
+      prepareScript();
+      showScreen(recorder);
+
+      if (!animationId) {
+        animationId = requestAnimationFrame(animate);
+      }
+    } catch (e) {
+      console.error(e);
+      if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+        showError('Camera or microphone permission was denied. Please allow access in your browser settings and try again.');
+      } else if (e.name === 'NotFoundError') {
+        showError('No camera or microphone was found on this device.');
+      } else {
+        showError(e.message || 'Could not access the camera and microphone.');
+      }
+    } finally {
+      startBtn.disabled = false;
+      startBtn.textContent = 'Start Teleprompter';
+    }
+  }
+
+  function exitRecorder() {
+    if (mediaRecorder?.state === 'recording') {
+      if (!confirm('End and discard this recording?')) return;
+      mediaRecorder.onstop = () => {
+        if (stream) stream.getTracks().forEach(track => track.stop());
+        stream = null;
+        showScreen(setup);
+      };
+      mediaRecorder.stop();
+      return;
+    }
+
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    stream = null;
+    showScreen(setup);
+  }
+
+  function newRecording() {
+    if (saveAlert) saveAlert.style.display = 'none';
+    if (recordingUrl) URL.revokeObjectURL(recordingUrl);
+    recordingUrl = null;
+    recordingBlob = null;
+    recordedVideo.removeAttribute('src');
+    showScreen(setup);
+    scriptInput.focus();
+  }
+
+  // Event Listeners
+  startBtn.addEventListener('click', begin);
+  recordBtn.addEventListener('click', () => {
+    if (mediaRecorder?.state === 'recording') stopRecording();
+    else startRecording();
+  });
+  scrollBtn.addEventListener('click', toggleScroll);
+  restartBtn.addEventListener('click', resetScroll);
+  exitBtn.addEventListener('click', exitRecorder);
+  saveBtn.addEventListener('click', saveVideo);
+  newBtn.addEventListener('click', newRecording);
+
+  // Manual scroll adjustment via wheel or touch for long texts
+  recorder.addEventListener('wheel', e => {
+    scrollY -= e.deltaY * 0.7;
+    scriptDisplay.style.transform = `translateY(${scrollY}px)`;
+  }, { passive: true });
+
+  let touchStartY = null;
+  recorder.addEventListener('touchstart', e => {
+    if (e.touches.length === 1 && !e.target.closest('.controls') && !e.target.closest('.status')) {
+      touchStartY = e.touches[0].clientY;
+    }
+  }, { passive: true });
+
+  recorder.addEventListener('touchmove', e => {
+    if (touchStartY !== null && e.touches.length === 1) {
+      const currentY = e.touches[0].clientY;
+      const diff = currentY - touchStartY;
+      touchStartY = currentY;
+      scrollY += diff;
+      scriptDisplay.style.transform = `translateY(${scrollY}px)`;
+    }
+  }, { passive: true });
+
+  recorder.addEventListener('touchend', () => {
+    touchStartY = null;
+  });
+
+  speed.addEventListener('input', () => {
+    speedValue.textContent = speed.value;
+  });
+
+  // Projects event listeners
+  scriptInput.addEventListener('input', () => {
+    clearError();
+    triggerAutoSave();
+  });
+
+  projectTitleInput.addEventListener('input', () => {
+    const current = getActiveProject();
+    if (!current) return;
+    current.name = projectTitleInput.value.trim() || 'Untitled Project';
+    current.updatedAt = Date.now();
+    if (saveStatus && saveStatusText) {
+      saveStatus.classList.add('saving');
+      saveStatusText.textContent = 'Saving…';
+    }
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+      persistProjects();
+      renderProjects();
+    }, 200);
+  });
+
+  projectTitleInput.addEventListener('blur', () => {
+    if (!projectTitleInput.value.trim()) {
+      projectTitleInput.value = 'Untitled Project';
+      const current = getActiveProject();
+      if (current) {
+        current.name = 'Untitled Project';
+        persistProjects();
+        renderProjects();
+      }
+    }
+  });
+
+  newProjectBtn.addEventListener('click', createProject);
+  sidebarToggleBtn.addEventListener('click', toggleSidebar);
+  sidebarCloseBtn.addEventListener('click', closeSidebar);
+  sidebarBackdrop.addEventListener('click', closeSidebar);
+
+  projectSearch.addEventListener('input', e => {
+    searchFilter = e.target.value.toLowerCase().trim();
+    renderProjects();
+  });
+
+  // Spacebar controls scrolling on desktop
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && sidebar.classList.contains('open')) {
+      closeSidebar();
+      return;
+    }
+    if (!recorder.classList.contains('active')) return;
+    if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      toggleScroll();
+    }
+  });
+
+  window.addEventListener('beforeunload', () => {
+    clearTimeout(saveTimeout);
+    const current = getActiveProject();
+    if (current) {
+      current.script = scriptInput.value;
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+        localStorage.setItem(ACTIVE_KEY, activeProjectId);
+      } catch (e) {}
+    }
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    if (recordingUrl) URL.revokeObjectURL(recordingUrl);
+    if (animationId) cancelAnimationFrame(animationId);
+  });
+
+  // Initialization
+  loadProjects();
+  syncActiveProjectToUI();
+  renderProjects();
+})();
+</script>
+</body>
+</html>
